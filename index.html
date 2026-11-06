@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Claude">
+<meta name="format-detection" content="telephone=no">
+<!--
+  Claude usage board — written for Safari on iOS 9 (iPad mini 1):
+  ES5 only, XMLHttpRequest, no fetch/Promise/arrow functions/CSS grid/CSS variables.
+  Open as  index.html?src=https://gist.githubusercontent.com/USER/GIST_ID/raw/board.json
+  or       index.html?gist=USER/GIST_ID
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #1a1a19; color: #f0efec; height: 100%; }
+  body {
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none;
+    overflow: hidden;
+  }
+  .wrap { padding: 22px 28px 18px; height: 100%; -webkit-box-sizing: border-box; box-sizing: border-box;
+          display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; }
+  .head { display: -webkit-flex; display: flex; -webkit-align-items: baseline; align-items: baseline;
+          -webkit-justify-content: space-between; justify-content: space-between; margin-bottom: 14px; }
+  .head h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: 0.2px; }
+  .head h1 span { color: #898781; font-weight: 400; margin-left: 10px; font-size: 15px; }
+  .clock { font-size: 15px; color: #c3c2b7; }
+  .clock b { color: #f0efec; font-weight: 500; font-size: 22px; margin-left: 10px; }
+
+  .row { display: -webkit-flex; display: flex; -webkit-flex: 1 1 auto; flex: 1 1 auto; min-height: 0; }
+  .meters { width: 46%; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; }
+  .meter { -webkit-flex: 1 1 0; flex: 1 1 0; display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center;
+           background: #222221; border-radius: 14px; padding: 14px 18px; margin: 0 14px 12px 0; min-height: 0; }
+  .ring { width: 150px; height: 150px; position: relative; -webkit-flex: 0 0 150px; flex: 0 0 150px; }
+  .ring svg { width: 150px; height: 150px; display: block; }
+  .ring .pct { position: absolute; left: 0; right: 0; top: 50%; margin-top: -24px; text-align: center;
+               font-size: 40px; font-weight: 600; letter-spacing: -1px; line-height: 48px; }
+  .ring .pct small { font-size: 20px; font-weight: 400; color: #c3c2b7; letter-spacing: 0; }
+  .mtext { margin-left: 20px; min-width: 0; }
+  .mtext .lbl { font-size: 15px; color: #c3c2b7; text-transform: uppercase; letter-spacing: 1px; }
+  .mtext .state { font-size: 22px; font-weight: 600; margin: 6px 0 8px; }
+  .mtext .reset { font-size: 16px; color: #c3c2b7; line-height: 1.4; }
+  .mtext .reset b { color: #f0efec; font-weight: 500; }
+
+  .ok    { color: #3987e5; }
+  .warn  { color: #fab219; }
+  .crit  { color: #e66767; }
+  .fill-ok   { stroke: #3987e5; }
+  .fill-warn { stroke: #fab219; }
+  .fill-crit { stroke: #d03b3b; }
+  .bg-ok   { background: #3987e5; }
+  .bg-warn { background: #fab219; }
+  .bg-crit { background: #d03b3b; }
+
+  .side { width: 54%; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; min-height: 0; }
+  .card { background: #222221; border-radius: 14px; padding: 14px 18px; margin-bottom: 12px; }
+  .card h2 { font-size: 15px; color: #c3c2b7; text-transform: uppercase; letter-spacing: 1px; margin: 0 0 8px; font-weight: 500; }
+  .card h2 span { color: #898781; text-transform: none; letter-spacing: 0; margin-left: 8px; font-weight: 400; }
+  .sessions { -webkit-flex: 1 1 auto; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .sess { padding: 9px 0; border-top: 1px solid #333331; }
+  .sess:first-child { border-top: 0; }
+  .sess .top { display: -webkit-flex; display: flex; -webkit-align-items: baseline; align-items: baseline; }
+  .sess .name { font-size: 19px; font-weight: 500; -webkit-flex: 1 1 auto; flex: 1 1 auto; min-width: 0;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess .name .dot { display: inline-block; width: 9px; height: 9px; border-radius: 5px; background: #0ca30c; margin: 0 8px 1px 0; }
+  .sess .name .dot.idle { background: #898781; }
+  .sess .meta { font-size: 15px; color: #898781; margin-left: 12px; white-space: nowrap; }
+  .sess .meta b { color: #c3c2b7; font-weight: 500; }
+  .sess .bar { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; margin-top: 7px; }
+  .sess .track { -webkit-flex: 1 1 auto; flex: 1 1 auto; height: 8px; border-radius: 4px; background: #383835; overflow: hidden; }
+  .sess .track div { height: 8px; border-radius: 4px; width: 0; }
+  .sess .ctx { font-size: 14px; color: #c3c2b7; margin-left: 10px; width: 110px; white-space: nowrap; }
+  .empty { color: #898781; font-size: 17px; padding: 10px 0; }
+
+  .tiles { display: -webkit-flex; display: flex; }
+  .tile { -webkit-flex: 1 1 0; flex: 1 1 0; background: #222221; border-radius: 14px; padding: 12px 18px; margin-right: 12px; }
+  .tile:last-child { margin-right: 0; }
+  .tile .lbl { font-size: 14px; color: #c3c2b7; text-transform: uppercase; letter-spacing: 1px; }
+  .tile .val { font-size: 30px; font-weight: 600; margin-top: 2px; letter-spacing: -0.5px; }
+  .tile .val small { font-size: 15px; color: #898781; font-weight: 400; letter-spacing: 0; margin-left: 6px; }
+  .tile .sub { font-size: 14px; color: #898781; margin-top: 2px; }
+
+  .foot { margin-top: 10px; font-size: 14px; color: #898781; display: -webkit-flex; display: flex;
+          -webkit-justify-content: space-between; justify-content: space-between; }
+  .foot .alert { color: #fab219; }
+  .foot .bad { color: #e66767; }
+
+  .setup { padding: 40px; font-size: 18px; line-height: 1.6; color: #c3c2b7; }
+  .setup code { color: #f0efec; background: #2a2a28; padding: 2px 6px; border-radius: 4px; font-size: 16px; }
+
+  @media (max-width: 820px) {
+    .row { -webkit-flex-direction: column; flex-direction: column; }
+    .meters, .side { width: 100%; }
+    .meters { -webkit-flex-direction: row; flex-direction: row; -webkit-flex: 0 0 auto; flex: 0 0 auto; }
+    .meter { margin: 0 12px 12px 0; }
+    .meter:last-child { margin-right: 0; }
+    .ring, .ring svg { width: 120px; height: 120px; }
+    .ring { -webkit-flex-basis: 120px; flex-basis: 120px; }
+    .ring .pct { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="head">
+    <h1>Claude Code <span id="plan">subscription limits</span></h1>
+    <div class="clock"><span id="upd">—</span><b id="clock">--:--</b></div>
+  </div>
+
+  <div class="row">
+    <div class="meters">
+      <div class="meter" id="m5">
+        <div class="ring">
+          <svg viewBox="0 0 150 150">
+            <circle cx="75" cy="75" r="64" fill="none" stroke="#383835" stroke-width="13"></circle>
+            <circle id="m5-arc" cx="75" cy="75" r="64" fill="none" class="fill-ok" stroke-width="13"
+                    stroke-linecap="round" transform="rotate(-90 75 75)"
+                    stroke-dasharray="402.1 402.1" stroke-dashoffset="402.1"></circle>
+          </svg>
+          <div class="pct"><span id="m5-pct">—</span><small>%</small></div>
+        </div>
+        <div class="mtext">
+          <div class="lbl">5-hour window</div>
+          <div class="state" id="m5-state">no data</div>
+          <div class="reset" id="m5-reset"></div>
+        </div>
+      </div>
+      <div class="meter" id="m7">
+        <div class="ring">
+          <svg viewBox="0 0 150 150">
+            <circle cx="75" cy="75" r="64" fill="none" stroke="#383835" stroke-width="13"></circle>
+            <circle id="m7-arc" cx="75" cy="75" r="64" fill="none" class="fill-ok" stroke-width="13"
+                    stroke-linecap="round" transform="rotate(-90 75 75)"
+                    stroke-dasharray="402.1 402.1" stroke-dashoffset="402.1"></circle>
+          </svg>
+          <div class="pct"><span id="m7-pct">—</span><small>%</small></div>
+        </div>
+        <div class="mtext">
+          <div class="lbl">Week</div>
+          <div class="state" id="m7-state">no data</div>
+          <div class="reset" id="m7-reset"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card sessions">
+        <h2>Sessions <span id="sess-count"></span></h2>
+        <div id="sess-list"><div class="empty">Nothing received yet</div></div>
+      </div>
+      <div class="tiles">
+        <div class="tile">
+          <div class="lbl">Today in Claude Code</div>
+          <div class="val" id="t-api">—</div>
+          <div class="sub">estimate at API list prices; the subscription isn't billed this way</div>
+        </div>
+        <div class="tile" id="t-console" style="display:none">
+          <div class="lbl">Console</div>
+          <div class="val" id="t-console-val">—</div>
+          <div class="sub" id="t-console-sub"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span id="status">connecting…</span>
+    <span id="src-note"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var REFRESH_MS = 30000;
+  var STALE_S = 180;
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  function $(id) { return document.getElementById(id); }
+  function param(name) {
+    var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(window.location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : null;
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function hhmm(d) { return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+  function ago(sec) {
+    if (sec < 45) return 'just now';
+    if (sec < 90) return '1 min ago';
+    var m = Math.round(sec / 60);
+    if (m < 60) return m + ' min ago';
+    var h = Math.floor(m / 60);
+    return plural(h, 'hour') + ' ago';
+  }
+  function untilText(sec) {
+    if (sec <= 0) return 'window already reset';
+    var m = Math.ceil(sec / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d >= 1) return plural(d, 'day') + ' ' + (h % 24) + ' h';
+    if (h >= 1) return h + ' h ' + pad2(m % 60) + ' min';
+    return m + ' min';
+  }
+  function money(v) {
+    if (v === null || v === undefined) return '—';
+    return '$' + (v >= 100 ? Math.round(v) : v >= 10 ? v.toFixed(1) : v.toFixed(2));
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function severity(pct) {
+    if (pct >= 85) return 'crit';
+    if (pct >= 60) return 'warn';
+    return 'ok';
+  }
+  var STATE_TEXT = { ok: '● fine', warn: '▲ running hot', crit: '■ near the limit' };
+
+  var src = param('src');
+  if (!src && param('gist')) {
+    src = 'https://gist.githubusercontent.com/' + param('gist') + '/raw/board.json';
+  }
+  if (!src) {
+    $('app').innerHTML =
+      '<div class="setup"><b>No data source given.</b><br>' +
+      'Open this page with <code>?src=RAW_GIST_URL</code> or <code>?gist=USER/ID</code> ' +
+      '— the URL is printed by <code>python3 board.py --setup</code>.</div>';
+    return;
+  }
+
+  var board = null, lastOk = 0, lastErr = null;
+  var CIRC = 402.1;
+
+  function setMeter(id, win) {
+    var arc = $(id + '-arc'), pctEl = $(id + '-pct'), st = $(id + '-state'), rs = $(id + '-reset');
+    if (!win || win.pct === null || win.pct === undefined) {
+      pctEl.textContent = '—';
+      arc.setAttribute('stroke-dashoffset', CIRC);
+      arc.setAttribute('class', 'fill-ok');
+      st.className = 'state';
+      st.textContent = 'no data';
+      rs.textContent = '';
+      return;
+    }
+    var pct = Math.max(0, Math.min(100, win.pct));
+    var sev = severity(pct);
+    pctEl.textContent = String(Math.round(pct));
+    arc.setAttribute('stroke-dashoffset', (CIRC * (1 - pct / 100)).toFixed(1));
+    arc.setAttribute('class', 'fill-' + sev);
+    st.className = 'state ' + sev;
+    st.textContent = STATE_TEXT[sev];
+    if (win.resets_at) {
+      var left = win.resets_at - Math.floor(new Date().getTime() / 1000);
+      var at = new Date(win.resets_at * 1000);
+      rs.innerHTML = left > 0
+        ? 'resets in <b>' + untilText(left) + '</b><br>at ' + hhmm(at) + (left > 86400 ? ' on ' + MONTHS[at.getMonth()] + ' ' + at.getDate() : '')
+        : 'window reset, waiting for new data';
+    } else {
+      rs.textContent = '';
+    }
+  }
+
+  function renderSessions(list, nowS) {
+    var el = $('sess-list'), html = '';
+    if (!list || !list.length) {
+      el.innerHTML = '<div class="empty">No active sessions</div>';
+      $('sess-count').textContent = '';
+      return;
+    }
+    var shown = list.slice(0, 6);
+    for (var i = 0; i < shown.length; i++) {
+      var s = shown[i];
+      var age = nowS - (s.updated || 0);
+      var live = age < 120;
+      var ctx = (s.ctx_pct === null || s.ctx_pct === undefined) ? null : Math.max(0, Math.min(100, s.ctx_pct));
+      var ctxSev = ctx === null ? 'ok' : severity(ctx);
+      html += '<div class="sess">' +
+        '<div class="top"><div class="name"><span class="dot' + (live ? '' : ' idle') + '"></span>' + escapeHtml(s.name || s.folder || '?') + '</div>' +
+        '<div class="meta"><b>' + escapeHtml(s.model || '') + '</b>' +
+        (s.effort ? ' · ' + escapeHtml(s.effort) : '') +
+        (s.cost_usd ? ' · ' + money(s.cost_usd) : '') +
+        ' · ' + ago(age) + '</div></div>' +
+        '<div class="bar"><div class="track"><div class="bg-' + ctxSev + '" style="width:' + (ctx === null ? 0 : ctx) + '%"></div></div>' +
+        '<div class="ctx">' + (ctx === null ? 'context —' : 'context ' + Math.round(ctx) + '%') + '</div></div>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+    $('sess-count').textContent = list.length > shown.length ? shown.length + ' of ' + list.length : String(list.length);
+  }
+
+  function renderStatus(nowS) {
+    var st = $('status');
+    var dataAge = board ? nowS - (board.generated || 0) : null;
+    if (lastErr && !board) {
+      st.className = 'bad';
+      st.textContent = 'could not load data: ' + lastErr;
+    } else if (lastErr) {
+      st.className = 'bad';
+      st.textContent = 'offline (' + lastErr + '), showing data from ' + ago(Math.floor((new Date().getTime() - lastOk) / 1000));
+    } else if (dataAge !== null && dataAge > STALE_S) {
+      st.className = 'alert';
+      st.textContent = 'Claude Code has been silent for ' + ago(dataAge).replace(' ago', '') + ' — numbers may be stale';
+    } else {
+      st.className = '';
+      st.textContent = 'refreshes every ' + (REFRESH_MS / 1000) + ' s';
+    }
+  }
+
+  function render() {
+    var nowS = Math.floor(new Date().getTime() / 1000);
+    renderStatus(nowS);
+    if (!board) return;
+    var rl = board.rate_limits || {};
+    setMeter('m5', rl.five_hour);
+    setMeter('m7', rl.seven_day);
+    renderSessions(board.sessions, nowS);
+    $('t-api').textContent = money(board.api_cost_today_usd || 0);
+
+    var cc = board.console_cost;
+    if (cc && (cc.today_usd !== null && cc.today_usd !== undefined || cc.error)) {
+      $('t-console').style.display = '';
+      if (cc.error) {
+        $('t-console-val').innerHTML = '<small style="margin:0">error</small>';
+        $('t-console-sub').textContent = cc.error.length > 60 ? cc.error.slice(0, 60) + '…' : cc.error;
+      } else {
+        $('t-console-val').innerHTML = escapeHtml(money(cc.today_usd)) + '<small>today</small>';
+        $('t-console-sub').textContent = 'month to date ' + money(cc.month_usd) + ' · updated ' + ago(nowS - (cc.fetched_at || 0));
+      }
+    } else {
+      $('t-console').style.display = 'none';
+    }
+
+    $('upd').textContent = 'data ' + ago(nowS - (board.generated || 0));
+  }
+
+  function load() {
+    var x = new XMLHttpRequest();
+    var url = src + (src.indexOf('?') >= 0 ? '&' : '?') + '_=' + new Date().getTime();
+    x.open('GET', url, true);
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4) return;
+      if (x.status >= 200 && x.status < 300) {
+        try {
+          board = JSON.parse(x.responseText);
+          lastErr = null;
+          lastOk = new Date().getTime();
+        } catch (e) {
+          lastErr = 'response is not JSON';
+        }
+      } else {
+        lastErr = 'HTTP ' + (x.status || 'no connection');
+      }
+      render();
+    };
+    try { x.send(null); } catch (e) { lastErr = 'no connection'; render(); }
+  }
+
+  function tick() {
+    $('clock').textContent = hhmm(new Date());
+    if (board) render();
+  }
+
+  $('src-note').textContent = src.replace(/^https?:\/\//, '').split('/').slice(0, 1)[0];
+  load();
+  setInterval(load, REFRESH_MS);
+  setInterval(tick, 1000);
+  tick();
+})();
+</script>
+</body>
+</html>
