@@ -60,7 +60,8 @@ HEARTBEAT = 120          # upload even if nothing changed, at most this often
 ACTIVE_WINDOW = 15 * 60  # a session is shown while updated within this window
 KEEP = 24 * 3600         # session files older than this are deleted
 COST_EVERY = 3600        # Console cost refresh interval
-LIMITS_EVERY = 300       # per-model weekly limits (Fable) refresh interval
+LIMITS_EVERY = 600       # per-model weekly limits (Fable) refresh interval
+LIMITS_MAX_BACKOFF = 3600  # after HTTP 429s the interval doubles up to this
 HTTP_TIMEOUT = 8
 
 GIST_FILE = "board.json"
@@ -317,7 +318,10 @@ def fetch_console_cost(admin_key):
 
 
 def limits_due(st, t):
-    return (t - st.get("limits_fetched", 0)) >= LIMITS_EVERY and CREDENTIALS.exists()
+    # The usage endpoint is rate-limited per account and Claude Code polls it too,
+    # so after a 429 we wait limits_wait (doubling) instead of LIMITS_EVERY.
+    wait = st.get("limits_wait") or LIMITS_EVERY
+    return (t - st.get("limits_fetched", 0)) >= wait and CREDENTIALS.exists()
 
 
 def iso_to_epoch(s):
@@ -379,6 +383,10 @@ def do_push():
         write_json(LIMITS, lim)
         st = read_json(STATE, {})
         st["limits_fetched"] = now()
+        if lim.get("error") == "HTTP 429":
+            st["limits_wait"] = min(LIMITS_MAX_BACKOFF, max(LIMITS_EVERY, st.get("limits_wait") or 0) * 2)
+        else:
+            st.pop("limits_wait", None)
         write_json(STATE, st)
     board = build_board()
     try:

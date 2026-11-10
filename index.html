@@ -295,10 +295,12 @@
     $('mf-name').textContent = m.name || 'Model';
     var win = (m.resets_at && m.resets_at <= nowS) ? null : { pct: m.pct, resets_at: m.resets_at };
     setMeter('mf', win);
+    // A failed check keeps the last good reading; occasional 429s are normal, so only
+    // flag the reading once it is genuinely old.
     var age = nowS - (ml.fetched_at || 0);
-    if (win && (ml.error || age > 30 * 60)) {
+    if (win && age > 75 * 60) {
       $('mf-reset').innerHTML += '<br><span class="warn">' +
-        escapeHtml(ml.error ? 'update failed: ' + ml.error : 'checked ' + ago(age)) + '</span>';
+        escapeHtml('checked ' + ago(age) + (ml.error ? ' (' + ml.error + ')' : '')) + '</span>';
     }
   }
 
