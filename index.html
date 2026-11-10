@@ -102,6 +102,10 @@
     .ring, .ring svg { width: 120px; height: 120px; }
     .ring { -webkit-flex-basis: 120px; flex-basis: 120px; }
     .ring .pct { font-size: 32px; }
+    .meter { -webkit-flex-direction: column; flex-direction: column; padding: 14px 10px; text-align: center; }
+    .mtext { margin: 10px 0 0; }
+    .mtext .state { font-size: 19px; }
+    .mtext .reset { font-size: 14px; }
   }
 </style>
 </head>
@@ -141,9 +145,25 @@
           <div class="pct"><span id="m7-pct">—</span><small>%</small></div>
         </div>
         <div class="mtext">
-          <div class="lbl">Week</div>
+          <div class="lbl">Week · all models</div>
           <div class="state" id="m7-state">no data</div>
           <div class="reset" id="m7-reset"></div>
+        </div>
+      </div>
+      <div class="meter" id="mf" style="display:none">
+        <div class="ring">
+          <svg viewBox="0 0 150 150">
+            <circle cx="75" cy="75" r="64" fill="none" stroke="#383835" stroke-width="13"></circle>
+            <circle id="mf-arc" cx="75" cy="75" r="64" fill="none" class="fill-ok" stroke-width="13"
+                    stroke-linecap="round" transform="rotate(-90 75 75)"
+                    stroke-dasharray="402.1 402.1" stroke-dashoffset="402.1"></circle>
+          </svg>
+          <div class="pct"><span id="mf-pct">—</span><small>%</small></div>
+        </div>
+        <div class="mtext">
+          <div class="lbl"><span id="mf-name">Fable</span> · week</div>
+          <div class="state" id="mf-state">no data</div>
+          <div class="reset" id="mf-reset"></div>
         </div>
       </div>
     </div>
@@ -261,6 +281,27 @@
     }
   }
 
+  // Per-model weekly window (Fable) — fetched by board.py from claude.ai every few minutes.
+  function renderModelLimit(ml, nowS) {
+    var box = $('mf');
+    var models = (ml && ml.models) || [];
+    var m = null;
+    for (var i = 0; i < models.length; i++) {
+      if (/fable/i.test(models[i].name || '')) { m = models[i]; break; }
+    }
+    if (!m && models.length) m = models[0];
+    if (!m) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    $('mf-name').textContent = m.name || 'Model';
+    var win = (m.resets_at && m.resets_at <= nowS) ? null : { pct: m.pct, resets_at: m.resets_at };
+    setMeter('mf', win);
+    var age = nowS - (ml.fetched_at || 0);
+    if (win && (ml.error || age > 30 * 60)) {
+      $('mf-reset').innerHTML += '<br><span class="warn">' +
+        escapeHtml(ml.error ? 'update failed: ' + ml.error : 'checked ' + ago(age)) + '</span>';
+    }
+  }
+
   function renderSessions(list, nowS) {
     var el = $('sess-list'), html = '';
     if (!list || !list.length) {
@@ -314,6 +355,7 @@
     var rl = board.rate_limits || {};
     setMeter('m5', rl.five_hour);
     setMeter('m7', rl.seven_day);
+    renderModelLimit(board.model_limits, nowS);
     renderSessions(board.sessions, nowS);
     $('t-api').textContent = money(board.api_cost_today_usd || 0);
 
