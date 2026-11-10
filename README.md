@@ -5,7 +5,7 @@ A wall dashboard for Claude Code subscription limits, made for an old iPad
 
 - the **5-hour** and **weekly (all models)** limit windows, with reset times
 - the **Fable weekly** limit
-- active Claude Code sessions: model, effort, cost, context use
+- active Claude Code sessions: model, effort, cost, context use, and their running or recently finished subagents
 - today's Claude Code spend at API list prices, plus Console spend if you add an Admin API key
 
 Nothing runs in the background. Claude Code runs `board.py` as its status line

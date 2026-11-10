@@ -37,6 +37,7 @@ import os
 import sys
 import time
 import hashlib
+import re
 import subprocess
 import urllib.request
 import urllib.error
@@ -63,6 +64,9 @@ COST_EVERY = 3600        # Console cost refresh interval
 LIMITS_EVERY = 600       # per-model weekly limits (Fable) refresh interval
 LIMITS_MAX_BACKOFF = 3600  # after HTTP 429s the interval doubles up to this
 HTTP_TIMEOUT = 8
+SUB_RECENT = 10 * 60     # finished subagents stay listed this long
+SUB_STALL = 10 * 60      # an unfinished subagent with no activity this long is treated as gone
+SUB_MAX = 8              # subagents kept per session
 
 GIST_FILE = "board.json"
 UA = "claude-usage-board/1.0"
@@ -127,6 +131,66 @@ def get(d, *keys, default=None):
 
 # ----------------------------------------------------------------------------- collect
 
+def model_label(model_id):
+    """claude-sonnet-5-5 -> Sonnet 5.5; aliases like 'sonnet' -> Sonnet."""
+    if not model_id:
+        return None
+    m = re.match(r"claude-([a-z]+)-(\d+)-(\d+)", model_id)
+    if m:
+        return "%s %s.%s" % (m.group(1).capitalize(), m.group(2), m.group(3))
+    return model_id.capitalize()
+
+
+def iso_ts(s):
+    try:
+        return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
+    except Exception:
+        return None
+
+
+def read_subagents(transcript_path, sid):
+    """Subagents of a session, from <transcript dir>/<session id>/subagents/agent-*.{meta.json,jsonl}.
+    Running ones first, then those finished within SUB_RECENT; at most SUB_MAX."""
+    if not transcript_path:
+        return []
+    d = Path(transcript_path).with_suffix("") / "subagents"
+    if not d.is_dir():
+        d = Path(transcript_path).parent / sid / "subagents"
+        if not d.is_dir():
+            return []
+    t = now()
+    out = []
+    try:
+        logs = sorted(d.glob("agent-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:30]
+    except OSError:
+        return []
+    for log_path in logs:
+        try:
+            updated = int(log_path.stat().st_mtime)
+            meta = read_json(log_path.with_suffix(".meta.json"), {})
+            running = not meta.get("finished") and t - updated < SUB_STALL
+            if not running and t - updated > SUB_RECENT:
+                continue
+            with open(log_path, "rb") as f:
+                head = f.read(4096).decode("utf-8", "replace")
+                f.seek(max(0, f.seek(0, 2) - 65536))
+                tail = f.read().decode("utf-8", "replace")
+            started = re.search(r'"timestamp":"([^"]+)"', head)
+            models = re.findall(r'"model":"(claude-[a-z0-9-]+)"', tail)
+            out.append({
+                "desc": meta.get("description") or meta.get("agentType") or "subagent",
+                "type": meta.get("agentType"),
+                "model": model_label(models[-1] if models else meta.get("model")),
+                "running": running,
+                "started": iso_ts(started.group(1)) if started else None,
+                "updated": updated,
+            })
+        except Exception:
+            continue
+    out.sort(key=lambda a: (not a["running"], -a["updated"]))
+    return out[:SUB_MAX]
+
+
 def save_session(inp):
     sid = inp.get("session_id") or "unknown"
     cwd = get(inp, "workspace", "current_dir") or inp.get("cwd") or ""
@@ -147,6 +211,7 @@ def save_session(inp):
         "fast": bool(inp.get("fast_mode")),
         "branch": get(inp, "worktree", "branch"),
         "updated": now(),
+        "subagents": read_subagents(inp.get("transcript_path"), sid),
     }
     rl = inp.get("rate_limits")
     if isinstance(rl, dict) and rl:

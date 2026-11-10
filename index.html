@@ -75,6 +75,16 @@
   .sess .track { -webkit-flex: 1 1 auto; flex: 1 1 auto; height: 8px; border-radius: 4px; background: #383835; overflow: hidden; }
   .sess .track div { height: 8px; border-radius: 4px; width: 0; }
   .sess .ctx { font-size: 14px; color: #c3c2b7; margin-left: 10px; width: 110px; white-space: nowrap; }
+  .subs { margin: 6px 0 0 17px; }
+  .sub { display: -webkit-flex; display: flex; -webkit-align-items: baseline; align-items: baseline;
+         font-size: 15px; line-height: 1.5; color: #c3c2b7; }
+  .sub .dot { display: inline-block; width: 7px; height: 7px; border-radius: 4px; background: #0ca30c;
+              margin: 0 8px 1px 0; -webkit-flex: 0 0 7px; flex: 0 0 7px; }
+  .sub.done { color: #898781; }
+  .sub.done .dot { background: #5f5e5a; }
+  .sub .what { -webkit-flex: 1 1 auto; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub .when { margin-left: 12px; white-space: nowrap; color: #898781; }
+  .sub .more { color: #898781; }
   .empty { color: #898781; font-size: 17px; padding: 10px 0; }
 
   .tiles { display: -webkit-flex; display: flex; }
@@ -304,6 +314,34 @@
     }
   }
 
+  function duration(sec) {
+    var m = Math.max(1, Math.round(sec / 60));
+    return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + pad2(m % 60) + ' min';
+  }
+
+  // Subagents of one session: running first, then recently finished (board.py keeps at most 8).
+  function renderSubagents(subs, nowS) {
+    if (!subs || !subs.length) return '';
+    var MAX = 4, html = '', shown = subs.slice(0, MAX);
+    for (var i = 0; i < shown.length; i++) {
+      var a = shown[i];
+      var when = a.running
+        ? 'running ' + duration(nowS - (a.started || a.updated || nowS))
+        : 'done ' + ago(nowS - (a.updated || nowS));
+      html += '<div class="sub' + (a.running ? '' : ' done') + '"><span class="dot"></span>' +
+        '<span class="what">' + escapeHtml(a.desc || 'subagent') +
+        (a.model ? ' · ' + escapeHtml(a.model) : '') + '</span>' +
+        '<span class="when">' + when + '</span></div>';
+    }
+    if (subs.length > MAX) {
+      var hiddenRunning = 0;
+      for (var j = MAX; j < subs.length; j++) if (subs[j].running) hiddenRunning++;
+      html += '<div class="sub"><span class="more">+' + (subs.length - MAX) + ' more' +
+        (hiddenRunning ? ' (' + hiddenRunning + ' running)' : '') + '</span></div>';
+    }
+    return '<div class="subs">' + html + '</div>';
+  }
+
   function renderSessions(list, nowS) {
     var el = $('sess-list'), html = '';
     if (!list || !list.length) {
@@ -326,6 +364,7 @@
         ' · ' + ago(age) + '</div></div>' +
         '<div class="bar"><div class="track"><div class="bg-' + ctxSev + '" style="width:' + (ctx === null ? 0 : ctx) + '%"></div></div>' +
         '<div class="ctx">' + (ctx === null ? 'context —' : 'context ' + Math.round(ctx) + '%') + '</div></div>' +
+        renderSubagents(s.subagents, nowS) +
         '</div>';
     }
     el.innerHTML = html;
